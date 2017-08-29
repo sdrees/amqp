@@ -123,6 +123,8 @@ func marshal(wr writer, i interface{}) error {
 		err = writeMap(wr, t)
 	case map[string]interface{}:
 		err = writeMap(wr, t)
+	case map[symbol]interface{}:
+		err = writeMap(wr, t)
 	case time.Time:
 		err = writeTimestamp(wr, t)
 	default:
@@ -282,7 +284,7 @@ func writeSymbolArray(wr writer, symbols []symbol) error {
 	defer bufPool.Put(buf)
 
 	for _, symbol := range symbols {
-		err := writeSymbol(buf, symbol, ofType)
+		err := writeSymbolType(buf, symbol, ofType)
 		if err != nil {
 			return err
 		}
@@ -297,7 +299,16 @@ func writeSymbolArray(wr writer, symbols []symbol) error {
 	return err
 }
 
-func writeSymbol(wr writer, sym symbol, typ amqpType) error {
+func writeSymbol(wr writer, sym symbol) error {
+	ofType := typeCodeSym8
+	if len(sym) > math.MaxUint8 {
+		ofType = typeCodeSym32
+	}
+
+	return writeSymbolType(wr, sym, ofType)
+}
+
+func writeSymbolType(wr writer, sym symbol, typ amqpType) error {
 	if !utf8.ValidString(string(sym)) {
 		return errorNew("not a valid UTF-8 string")
 	}
@@ -459,6 +470,18 @@ func writeMap(wr writer, m interface{}) error {
 			}
 		}
 	case map[string]interface{}:
+		length = len(m)
+		for key, val := range m {
+			err := marshal(buf, key)
+			if err != nil {
+				return err
+			}
+			err = marshal(buf, val)
+			if err != nil {
+				return err
+			}
+		}
+	case map[symbol]interface{}:
 		length = len(m)
 		for key, val := range m {
 			err := marshal(buf, key)
