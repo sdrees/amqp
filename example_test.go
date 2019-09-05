@@ -31,7 +31,7 @@ func Example() {
 	{
 		// Create a sender
 		sender, err := session.NewSender(
-			amqp.LinkAddress("/queue-name"),
+			amqp.LinkTargetAddress("/queue-name"),
 		)
 		if err != nil {
 			log.Fatal("Creating sender link:", err)
@@ -40,30 +40,30 @@ func Example() {
 		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 
 		// Send message
-		err = sender.Send(ctx, &amqp.Message{
-			Data: []byte("Hello!"),
-		})
+		err = sender.Send(ctx, amqp.NewMessage([]byte("Hello!")))
 		if err != nil {
 			log.Fatal("Sending message:", err)
 		}
 
+		sender.Close(ctx)
 		cancel()
-		sender.Close()
 	}
 
 	// Continuously read messages
 	{
 		// Create a receiver
 		receiver, err := session.NewReceiver(
-			amqp.LinkAddress("/queue-name"),
+			amqp.LinkSourceAddress("/queue-name"),
 			amqp.LinkCredit(10),
 		)
 		if err != nil {
 			log.Fatal("Creating receiver link:", err)
 		}
-
-		ctx, cancel := context.WithCancel(ctx)
-		defer cancel()
+		defer func() {
+			ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+			receiver.Close(ctx)
+			cancel()
+		}()
 
 		for {
 			// Receive next message
@@ -75,7 +75,7 @@ func Example() {
 			// Accept message
 			msg.Accept()
 
-			fmt.Printf("Message received: %s\n", msg.Data)
+			fmt.Printf("Message received: %s\n", msg.GetData())
 		}
 	}
 }

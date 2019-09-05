@@ -3,7 +3,6 @@
 package amqp
 
 import (
-	"bytes"
 	"context"
 	"time"
 
@@ -26,7 +25,7 @@ func FuzzConn(data []byte) int {
 		return 0
 	}
 
-	r, err := s.NewReceiver(LinkAddress("source"), LinkCredit(2))
+	r, err := s.NewReceiver(LinkSourceAddress("source"), LinkCredit(2))
 	if err != nil {
 		return 0
 	}
@@ -38,9 +37,12 @@ func FuzzConn(data []byte) int {
 
 	msg.Accept()
 
-	// r.Close() // disabled until link close timeout implemented
+	ctx, close := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer close()
 
-	s.Close()
+	r.Close(ctx)
+
+	s.Close(ctx)
 
 	// Send
 	client, err = New(testconn.New(data),
@@ -57,21 +59,22 @@ func FuzzConn(data []byte) int {
 		return 0
 	}
 
-	sender, err := s.NewSender(LinkAddress("source"), LinkCredit(2))
+	sender, err := s.NewSender(LinkTargetAddress("source"), LinkCredit(2))
 	if err != nil {
 		return 0
 	}
 
-	err = sender.Send(context.Background(), &Message{
-		Data: []byte(data),
-	})
+	err = sender.Send(context.Background(), NewMessage(data))
 	if err != nil {
 		return 0
 	}
 
-	// r.Close() // disabled until link close timeout implemented
+	ctx, close = context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer close()
 
-	s.Close()
+	r.Close(ctx)
+
+	s.Close(ctx)
 
 	return 1
 }
@@ -181,7 +184,8 @@ func FuzzUnmarshal(data []byte) int {
 	}
 
 	for _, t := range types {
-		unmarshal(bytes.NewBuffer(data), t)
+		unmarshal(&buffer{b: data}, t)
+		readAny(&buffer{b: data})
 	}
 	return 0
 }

@@ -2,22 +2,17 @@
 
 [![Go Report Card](https://goreportcard.com/badge/pack.ag/amqp)](https://goreportcard.com/report/pack.ag/amqp)
 [![Coverage Status](https://coveralls.io/repos/github/vcabbage/amqp/badge.svg?branch=master)](https://coveralls.io/github/vcabbage/amqp?branch=master)
-[![Build Status](https://travis-ci.org/vcabbage/amqp.svg?branch=master)](https://travis-ci.org/vcabbage/amqp)
-[![Build status](https://ci.appveyor.com/api/projects/status/to267eqa7nojpv56?svg=true)](https://ci.appveyor.com/project/vCabbage/amqp)
+[![Build Status](https://github.com/vcabbage/amqp/workflows/tests/badge.svg)](https://github.com/vcabbage/amqp/actions)
 [![GoDoc](https://godoc.org/pack.ag/amqp?status.svg)](http://godoc.org/pack.ag/amqp)
 [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](https://raw.githubusercontent.com/vcabbage/amqp/master/LICENSE)
 
 pack.ag/amqp is an AMQP 1.0 client implementation for Go.
 
-AMQP 1.0 is not compatible with AMQP 0-9-1 or 0-10, which are
-the most common AMQP protocols in use today.
+[AMQP 1.0](http://docs.oasis-open.org/amqp/core/v1.0/os/amqp-core-overview-v1.0-os.html) is not compatible with AMQP 0-9-1 or 0-10, which are
+the most common AMQP protocols in use today. A list of AMQP 1.0 brokers and other
+AMQP 1.0 resources can be found at [github.com/xinchen10/awesome-amqp](https://github.com/xinchen10/awesome-amqp).
 
-This project is currently alpha status, though is currently being used by my employer
-in a pre-production capacity. The current focus is reading from Microsoft Azure's Service Bus.
-
-API is subject to change until 1.0.0. If you choose to use this library, please vendor it.
-
----
+This library aims to be stable and worthy of production usage, but the API is still subject to change. To conform with SemVer, the major version will remain 0 until the API is deemed stable. During this period breaking changes will be indicated by bumping the minor version. Non-breaking changes will bump the patch version.
 
 ## Install
 
@@ -25,15 +20,20 @@ API is subject to change until 1.0.0. If you choose to use this library, please 
 go get -u pack.ag/amqp
 ```
 
+## Contributing
+
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Example Usage
 
 ``` go
-package mypackage
+package main
 
 import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"pack.ag/amqp"
 )
@@ -60,7 +60,7 @@ func main() {
 	{
 		// Create a sender
 		sender, err := session.NewSender(
-			amqp.LinkAddress("/queue-name"),
+			amqp.LinkTargetAddress("/queue-name"),
 		)
 		if err != nil {
 			log.Fatal("Creating sender link:", err)
@@ -69,30 +69,30 @@ func main() {
 		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 
 		// Send message
-		err = sender.Send(ctx, &amqp.Message{
-			Data: []byte("Hello!"),
-		})
+		err = sender.Send(ctx, amqp.NewMessage([]byte("Hello!")))
 		if err != nil {
 			log.Fatal("Sending message:", err)
 		}
 
+		sender.Close(ctx)
 		cancel()
-		sender.Close()
 	}
 
 	// Continuously read messages
 	{
 		// Create a receiver
 		receiver, err := session.NewReceiver(
-			amqp.LinkAddress("/queue-name"),
+			amqp.LinkSourceAddress("/queue-name"),
 			amqp.LinkCredit(10),
 		)
 		if err != nil {
 			log.Fatal("Creating receiver link:", err)
 		}
-
-		ctx, cancel := context.WithCancel(ctx)
-		defer cancel()
+		defer func() {
+			ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+			receiver.Close(ctx)
+			cancel()
+		}()
 
 		for {
 			// Receive next message
@@ -104,26 +104,24 @@ func main() {
 			// Accept message
 			msg.Accept()
 
-			fmt.Printf("Message received: %s\n", msg.Data)
+			fmt.Printf("Message received: %s\n", msg.GetData())
 		}
 	}
 }
 ```
 
----
+## Related Projects
 
-### Notable Bugs/Shortcomings
+| Project | Description |
+|---------|-------------|
+| [github.com/Azure/azure-event-hubs-go](https://github.com/Azure/azure-event-hubs-go) * | Library for interacting with Microsoft Azure Event Hubs. |
+| [github.com/Azure/azure-service-bus-go](https://github.com/Azure/azure-service-bus-go) * | Library for interacting with Microsoft Azure Service Bus. |
+| [gocloud.dev/pubsub](https://gocloud.dev/pubsub) * | Library for portably interacting with Pub/Sub systems. |
+| [qpid-proton](https://github.com/apache/qpid-proton/tree/go1) | AMQP 1.0 library using the Qpid Proton C bindings. |
 
-- [ ] Closing a sessions does not send an end performative.
-- [ ] Testing should be improved. Currently fuzz testing and basic Azure Service Bus integration testing is being performed.
+`*` indicates that the project uses this library.
 
-### Features - Short Term
-
-- [ ] Set sender filters to support Azure Event Hubs.
-
-### Features - Medium Term
-
-- [X] Support message producer operations. (Supported as of 0.2.0)
+Feel free to send PRs adding additional projects. Listed projects are not limited to those that use this library as long as they are potentially useful to people who are looking at an AMQP library.
 
 ### Other Notes
 
